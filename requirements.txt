@@ -52,6 +52,7 @@ uvicorn
 # UI (optional)
 
 streamlit
+protobuf==3.20.3
 
 # Utilities
 

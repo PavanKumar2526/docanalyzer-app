@@ -6,7 +6,7 @@ import os
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import FAISS
 from langchain_mistralai import ChatMistralAI
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -42,6 +42,7 @@ if uploaded_file:
     if st.button("Create Vector Database"):
         with st.spinner("Processing document… this may take a minute."):
             try:
+                # Load PDF
                 loader = PyPDFLoader(file_path)
                 docs = loader.load()
 
@@ -49,18 +50,21 @@ if uploaded_file:
                     st.error("❌ No text found. This PDF may be scanned/image-based.")
                     st.stop()
 
+                # Split into chunks
                 splitter = RecursiveCharacterTextSplitter(
                     chunk_size=1000,
                     chunk_overlap=200
                 )
                 chunks = splitter.split_documents(docs)
 
+                # Load embeddings once, reuse across reruns
                 if st.session_state.embeddings is None:
                     st.session_state.embeddings = HuggingFaceEmbeddings(
                         model_name="sentence-transformers/all-MiniLM-L6-v2"
                     )
 
-                st.session_state.vectorstore = Chroma.from_documents(
+                # Build FAISS vector store in memory — no disk, no system deps
+                st.session_state.vectorstore = FAISS.from_documents(
                     documents=chunks,
                     embedding=st.session_state.embeddings
                 )

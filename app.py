@@ -2,6 +2,7 @@ import streamlit as st
 from dotenv import load_dotenv
 import tempfile
 import os
+
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -11,7 +12,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 load_dotenv()
 
-# ── Page config ──────────────────────────────────────────────
+# ── Page config ───────────────────────────────────────────────
 st.set_page_config(page_title="RAG Book Assistant", page_icon="📚")
 st.title("📚 RAG Book Assistant")
 st.write("Upload a PDF and ask questions from the document")
@@ -19,56 +20,49 @@ st.write("Upload a PDF and ask questions from the document")
 # ── API key guard ─────────────────────────────────────────────
 api_key = os.getenv("MISTRAL_API_KEY")
 if not api_key:
-    st.error("⚠️ MISTRAL_API_KEY is not set. Add it in Streamlit Cloud → Settings → Secrets.")
+    st.error("⚠️ MISTRAL_API_KEY is not set. Go to Streamlit Cloud → your app → Settings → Secrets and add it.")
     st.stop()
 
-# ── Session state init ────────────────────────────────────────
+# ── Session state ─────────────────────────────────────────────
 if "vectorstore" not in st.session_state:
     st.session_state.vectorstore = None
-
 if "embeddings" not in st.session_state:
     st.session_state.embeddings = None
 
-# ── File uploader ─────────────────────────────────────────────
+# ── File upload ───────────────────────────────────────────────
 uploaded_file = st.file_uploader("Upload a PDF book", type="pdf")
 
 if uploaded_file:
-    # Save with .pdf extension so PyPDFLoader detects it correctly
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-        tmp_file.write(uploaded_file.read())
-        file_path = tmp_file.name
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(uploaded_file.read())
+        file_path = tmp.name
 
-    st.success("PDF uploaded successfully!")
+    st.success("✅ PDF uploaded!")
 
     if st.button("Create Vector Database"):
-        with st.spinner("Processing document... (this may take a minute)"):
+        with st.spinner("Processing document… this may take a minute."):
             try:
-                # Load
                 loader = PyPDFLoader(file_path)
                 docs = loader.load()
 
                 if not docs:
-                    st.error("❌ Could not extract text from the PDF. It may be scanned/image-based.")
+                    st.error("❌ No text found. This PDF may be scanned/image-based.")
                     st.stop()
 
-                # Split
                 splitter = RecursiveCharacterTextSplitter(
                     chunk_size=1000,
                     chunk_overlap=200
                 )
                 chunks = splitter.split_documents(docs)
 
-                # Embeddings — cache in session state so it's not re-downloaded every rerun
                 if st.session_state.embeddings is None:
                     st.session_state.embeddings = HuggingFaceEmbeddings(
                         model_name="sentence-transformers/all-MiniLM-L6-v2"
                     )
 
-                # Vector store — store in session state (no disk dependency)
                 st.session_state.vectorstore = Chroma.from_documents(
                     documents=chunks,
                     embedding=st.session_state.embeddings
-                    # No persist_directory — kept in memory for Streamlit Cloud
                 )
 
                 st.success(f"✅ Vector database created from {len(chunks)} chunks!")
@@ -76,63 +70,48 @@ if uploaded_file:
             except Exception as e:
                 st.error(f"❌ Error processing PDF: {e}")
 
-# ── Q&A Section ───────────────────────────────────────────────
+# ── Q&A ───────────────────────────────────────────────────────
 if st.session_state.vectorstore is not None:
     st.divider()
-    st.subheader("Ask Questions From the Book")
+    st.subheader("💬 Ask Questions From the Book")
 
     retriever = st.session_state.vectorstore.as_retriever(
         search_type="mmr",
-        search_kwargs={
-            "k": 4,
-            "fetch_k": 10,
-            "lambda_mult": 0.5
-        }
+        search_kwargs={"k": 4, "fetch_k": 10, "lambda_mult": 0.5}
     )
 
     llm = ChatMistralAI(
-        model="mistral-small-latest",   # stable alias, always available
+        model="mistral-small-latest",
         api_key=api_key
     )
 
     prompt = ChatPromptTemplate.from_messages([
-        (
-            "system",
-            """You are a helpful AI assistant.
+        ("system", """You are a helpful AI assistant.
 Use ONLY the provided context to answer the question.
-If the answer is not present in the context,
-say: "I could not find the answer in the document." """
-        ),
-        (
-            "human",
-            """Context:
-{context}
-
-Question:
-{question}"""
-        )
+If the answer is not in the context, say: 'I could not find the answer in the document.'"""),
+        ("human", "Context:\n{context}\n\nQuestion:\n{question}")
     ])
 
     query = st.text_input("Enter your question")
 
     if query:
-        with st.spinner("Searching document and generating answer..."):
+        with st.spinner("Searching and generating answer..."):
             try:
                 retrieved_docs = retriever.invoke(query)
 
                 if not retrieved_docs:
-                    st.warning("⚠️ No relevant content found in the document for that question.")
+                    st.warning("⚠️ No relevant content found for that question.")
                 else:
-                    context = "\n\n".join([doc.page_content for doc in retrieved_docs])
+                    context = "\n\n".join([d.page_content for d in retrieved_docs])
                     final_prompt = prompt.invoke({"context": context, "question": query})
                     response = llm.invoke(final_prompt)
 
-                    st.write("### 🤖 AI Answer")
+                    st.write("### 🤖 Answer")
                     st.write(response.content)
 
                     with st.expander("📄 Source chunks used"):
                         for i, doc in enumerate(retrieved_docs):
-                            st.markdown(f"**Chunk {i+1}** (Page {doc.metadata.get('page', '?')})")
+                            st.markdown(f"**Chunk {i+1}** — Page {doc.metadata.get('page', '?')}")
                             st.caption(doc.page_content[:500])
 
             except Exception as e:
@@ -140,6 +119,6 @@ Question:
 
 else:
     if uploaded_file:
-        st.info("👆 Click 'Create Vector Database' to process the PDF first.")
+        st.info("👆 Click 'Create Vector Database' to process your PDF first.")
     else:
         st.info("👆 Upload a PDF to get started.")

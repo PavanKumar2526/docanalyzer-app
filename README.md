@@ -25,7 +25,8 @@ Two implementations are available: one powered by **Mistral AI** and another by 
 - [Environment Variables](#environment-variables)
 - [Usage](#usage)
 - [Design Decisions](#design-decisions)
-
+- [Web Link](#web-link)
+  
 ---
 
 ## Overview
@@ -224,3 +225,7 @@ Without overlap, answers that span a chunk boundary would be missed. A 200-chara
 
 **Why MMR retrieval in `app.py`?**
 Standard similarity search can return multiple near-duplicate chunks. MMR (Maximal Marginal Relevance) balances relevance with diversity, ensuring the retrieved context covers more ground.
+
+## Web Link 
+* Click here https://docanalyzer-app.streamlit.app/
+* https://1drv.ms/i/c/f9d4032863577912/IQA42MLoLw5CT7tg2kaoO1-NAUUBZS4mWh_e5Hm-DEkak1I?e=MKqn43
